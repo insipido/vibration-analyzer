@@ -3,127 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3-Axis Vibration Analyzer v2</title>
+    <title>Vibration Logger Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #1a1a1a; color: white; padding: 15px; }
-        .card { background: #2d2d2d; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; border: 1px solid #444; }
-        .controls { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-        button { padding: 12px 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; min-width: 100px; }
+        body { font-family: -apple-system, sans-serif; background: #121212; color: white; padding: 15px; margin: 0; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; border: 1px solid #333; }
+        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+        button { padding: 12px 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; flex: 1; min-width: 120px; transition: 0.2s; }
         #startBtn { background: #2ecc71; color: white; }
         #stopBtn { background: #f39c12; color: white; display: none; }
+        #exportBtn { background: #3498db; color: white; display: none; }
         #resetBtn { background: #e74c3c; color: white; }
         .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; text-align: center; }
-        .label { font-size: 0.75rem; color: #aaa; text-transform: uppercase; }
-        .value { font-size: 1.1rem; font-family: monospace; padding-top: 5px; }
-        canvas { background: #000; border-radius: 8px; }
-        .status-tag { font-size: 0.7rem; color: #2ecc71; margin-bottom: 10px; display: block; }
+        .label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
+        .value { font-size: 1.1rem; font-family: monospace; color: #eee; }
+        canvas { background: #000; border-radius: 8px; margin-top: 10px; }
+        .log-count { font-size: 0.75rem; color: #3498db; margin-top: 10px; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <span id="status" class="status-tag">READY TO SYNC</span>
-    <h2>Vibration Analysis</h2>
+    <h2 style="margin-top:0">Vibration Data Logger</h2>
     
     <div class="controls">
-        <button id="startBtn">START</button>
-        <button id="stopBtn">STOP</button>
-        <button id="resetBtn">RESTART</button>
+        <button id="startBtn">START RECORDING</button>
+        <button id="stopBtn">STOP & PAUSE</button>
+        <button id="exportBtn">DOWNLOAD CSV</button>
+        <button id="resetBtn">RESET ALL</button>
     </div>
 
     <div class="stats">
-        <div><div class="label">X (Lat)</div><div id="valX" class="value" style="color:#ff6384">0.00</div></div>
-        <div><div class="label">Y (Long)</div><div id="valY" class="value" style="color:#4bc0c0">0.00</div></div>
-        <div><div class="label">Z (Vert)</div><div id="valZ" class="value" style="color:#36a2eb">0.00</div></div>
+        <div><div class="label">X-Axis</div><div id="valX" class="value">0.00</div></div>
+        <div><div class="label">Y-Axis</div><div id="valY" class="value">0.00</div></div>
+        <div><div class="label">Z-Axis</div><div id="valZ" class="value">0.00</div></div>
     </div>
 
     <canvas id="vibrationChart"></canvas>
+    <div id="logCount" class="log-count">Data Points Captured: 0</div>
 </div>
 
 <script>
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const exportBtn = document.getElementById('exportBtn');
     const resetBtn = document.getElementById('resetBtn');
-    const statusText = document.getElementById('status');
+    const logCountDisp = document.getElementById('logCount');
     const ctx = document.getElementById('vibrationChart').getContext('2d');
-    
+
     let chart;
-    let isPaused = false;
-    const historyLimit = 60; // Approx 1 second of data at 60Hz
-    let dataX = Array(historyLimit).fill(0);
-    let dataY = Array(historyLimit).fill(0);
-    let dataZ = Array(historyLimit).fill(0);
+    let isRecording = false;
+    let recordingBuffer = []; // This stores the full session for export
+    const historyLimit = 100; // Visual limit for the graph
+    
+    let visualX = Array(historyLimit).fill(0);
+    let visualY = Array(historyLimit).fill(0);
+    let visualZ = Array(historyLimit).fill(0);
 
     chart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: Array(historyLimit).fill(''),
             datasets: [
-                { label: 'X', data: dataX, borderColor: '#ff6384', borderWidth: 2, pointRadius: 0, fill: false },
-                { label: 'Y', data: dataY, borderColor: '#4bc0c0', borderWidth: 2, pointRadius: 0, fill: false },
-                { label: 'Z', data: dataZ, borderColor: '#36a2eb', borderWidth: 2, pointRadius: 0, fill: false }
+                { label: 'X', data: visualX, borderColor: '#ff6384', borderWidth: 2, pointRadius: 0, fill: false },
+                { label: 'Y', data: visualY, borderColor: '#4bc0c0', borderWidth: 2, pointRadius: 0, fill: false },
+                { label: 'Z', data: visualZ, borderColor: '#36a2eb', borderWidth: 2, pointRadius: 0, fill: false }
             ]
         },
         options: {
             responsive: true,
             animation: false,
-            scales: {
-                y: { min: -10, max: 10, grid: { color: '#333' }, ticks: { color: '#888' } },
-                x: { display: false }
-            },
-            plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } }
+            scales: { y: { min: -15, max: 15, grid: { color: '#333' } }, x: { display: false } },
+            plugins: { legend: { labels: { color: '#fff' } } }
         }
     });
 
     startBtn.onclick = async () => {
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             const permission = await DeviceMotionEvent.requestPermission();
-            if (permission === 'granted') initSensor();
-        } else {
-            initSensor();
+            if (permission !== 'granted') return;
         }
-    };
-
-    function initSensor() {
+        
+        isRecording = true;
         startBtn.style.display = 'none';
         stopBtn.style.display = 'inline-block';
-        statusText.innerText = "LIVE STREAMING";
+        exportBtn.style.display = 'none';
+        window.addEventListener('devicemotion', handleMotion);
+    };
+
+    function handleMotion(event) {
+        if (!isRecording) return;
+
+        const acc = event.acceleration;
+        if (!acc || acc.x === null) return;
+
+        const timestamp = new Date().toISOString();
         
-        window.addEventListener('devicemotion', (event) => {
-            if (isPaused) return; // Exit if paused
-
-            const acc = event.acceleration; 
-            if (!acc || acc.x === null) return;
-
-            // Update UI Numbers
-            document.getElementById('valX').innerText = acc.x.toFixed(2);
-            document.getElementById('valY').innerText = acc.y.toFixed(2);
-            document.getElementById('valZ').innerText = acc.z.toFixed(2);
-
-            // Update Data Arrays
-            dataX.push(acc.x); dataX.shift();
-            dataY.push(acc.y); dataY.shift();
-            dataZ.push(acc.z); dataZ.shift();
-            
-            chart.update();
+        // 1. Add to Export Buffer (Full Detail)
+        recordingBuffer.push({
+            time: timestamp,
+            x: acc.x.toFixed(4),
+            y: acc.y.toFixed(4),
+            z: acc.z.toFixed(4)
         });
+
+        // 2. Update UI Stats
+        document.getElementById('valX').innerText = acc.x.toFixed(2);
+        document.getElementById('valY').innerText = acc.y.toFixed(2);
+        document.getElementById('valZ').innerText = acc.z.toFixed(2);
+        logCountDisp.innerText = `Data Points Captured: ${recordingBuffer.length}`;
+
+        // 3. Update Visual Graph (Rolling window)
+        visualX.push(acc.x); visualX.shift();
+        visualY.push(acc.y); visualY.shift();
+        visualZ.push(acc.z); visualZ.shift();
+        chart.update();
     }
 
     stopBtn.onclick = () => {
-        isPaused = !isPaused;
-        stopBtn.innerText = isPaused ? "RESUME" : "STOP";
-        stopBtn.style.background = isPaused ? "#2ecc71" : "#f39c12";
-        statusText.innerText = isPaused ? "PAUSED (FREEZE FRAME)" : "LIVE STREAMING";
-        statusText.style.color = isPaused ? "#f39c12" : "#2ecc71";
+        isRecording = false;
+        stopBtn.style.display = 'none';
+        startBtn.innerText = "RESUME RECORDING";
+        startBtn.style.display = 'inline-block';
+        if (recordingBuffer.length > 0) exportBtn.style.display = 'inline-block';
+    };
+
+    exportBtn.onclick = () => {
+        let csvContent = "Timestamp,X_Axis(m/s2),Y_Axis(m/s2),Z_Axis(m/s2)\n";
+        recordingBuffer.forEach(row => {
+            csvContent += `${row.time},${row.x},${row.y},${row.z}\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `vibration_data_${new Date().getTime()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     resetBtn.onclick = () => {
-        dataX.fill(0);
-        dataY.fill(0);
-        dataZ.fill(0);
-        chart.update();
-        if (isPaused) stopBtn.click(); // Auto-resume on reset
+        if(confirm("Clear all recorded data?")) {
+            recordingBuffer = [];
+            visualX.fill(0); visualY.fill(0); visualZ.fill(0);
+            chart.update();
+            logCountDisp.innerText = "Data Points Captured: 0";
+            exportBtn.style.display = 'none';
+            startBtn.innerText = "START RECORDING";
+        }
     };
 </script>
 </body>
