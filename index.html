@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vibration Logger Pro</title>
+    <title>Vibration Logger Pro v3</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; background: #121212; color: white; padding: 15px; margin: 0; }
@@ -16,7 +16,7 @@
         #resetBtn { background: #e74c3c; color: white; }
         .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; text-align: center; }
         .label { font-size: 0.7rem; color: #888; text-transform: uppercase; }
-        .value { font-size: 1.1rem; font-family: monospace; color: #eee; }
+        .value { font-size: 1.1rem; font-family: monospace; color: #eee; padding-top: 5px; }
         canvas { background: #000; border-radius: 8px; margin-top: 10px; }
         .log-count { font-size: 0.75rem; color: #3498db; margin-top: 10px; text-align: center; }
     </style>
@@ -49,12 +49,17 @@
     const exportBtn = document.getElementById('exportBtn');
     const resetBtn = document.getElementById('resetBtn');
     const logCountDisp = document.getElementById('logCount');
+    
+    const valXDisp = document.getElementById('valX');
+    const valYDisp = document.getElementById('valY');
+    const valZDisp = document.getElementById('valZ');
+
     const ctx = document.getElementById('vibrationChart').getContext('2d');
 
     let chart;
     let isRecording = false;
-    let recordingBuffer = []; // This stores the full session for export
-    const historyLimit = 100; // Visual limit for the graph
+    let recordingBuffer = []; 
+    const historyLimit = 100; 
     
     let visualX = Array(historyLimit).fill(0);
     let visualY = Array(historyLimit).fill(0);
@@ -73,7 +78,10 @@
         options: {
             responsive: true,
             animation: false,
-            scales: { y: { min: -15, max: 15, grid: { color: '#333' } }, x: { display: false } },
+            scales: { 
+                y: { min: -15, max: 15, grid: { color: '#333' }, ticks: { color: '#666' } }, 
+                x: { display: false } 
+            },
             plugins: { legend: { labels: { color: '#fff' } } }
         }
     });
@@ -99,7 +107,7 @@
 
         const timestamp = new Date().toISOString();
         
-        // 1. Add to Export Buffer (Full Detail)
+        // Update Export Buffer
         recordingBuffer.push({
             time: timestamp,
             x: acc.x.toFixed(4),
@@ -107,13 +115,13 @@
             z: acc.z.toFixed(4)
         });
 
-        // 2. Update UI Stats
-        document.getElementById('valX').innerText = acc.x.toFixed(2);
-        document.getElementById('valY').innerText = acc.y.toFixed(2);
-        document.getElementById('valZ').innerText = acc.z.toFixed(2);
+        // Update UI Stats Text
+        valXDisp.innerText = acc.x.toFixed(2);
+        valYDisp.innerText = acc.y.toFixed(2);
+        valZDisp.innerText = acc.z.toFixed(2);
         logCountDisp.innerText = `Data Points Captured: ${recordingBuffer.length}`;
 
-        // 3. Update Visual Graph (Rolling window)
+        // Update Visual Graph
         visualX.push(acc.x); visualX.shift();
         visualY.push(acc.y); visualY.shift();
         visualZ.push(acc.z); visualZ.shift();
@@ -123,7 +131,7 @@
     stopBtn.onclick = () => {
         isRecording = false;
         stopBtn.style.display = 'none';
-        startBtn.innerText = "RESUME RECORDING";
+        startBtn.innerText = "RESUME";
         startBtn.style.display = 'inline-block';
         if (recordingBuffer.length > 0) exportBtn.style.display = 'inline-block';
     };
@@ -138,20 +146,34 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `vibration_data_${new Date().getTime()}.csv`);
+        link.setAttribute("download", `vib_data_${new Date().getTime()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
     resetBtn.onclick = () => {
-        if(confirm("Clear all recorded data?")) {
+        if(confirm("Are you sure you want to clear all data and reset sensors to zero?")) {
+            // 1. Clear Data Storage
             recordingBuffer = [];
+            
+            // 2. Clear Graph
             visualX.fill(0); visualY.fill(0); visualZ.fill(0);
             chart.update();
+            
+            // 3. Reset Numerical Displays to 0 (Fixes your issue)
+            valXDisp.innerText = "0.00";
+            valYDisp.innerText = "0.00";
+            valZDisp.innerText = "0.00";
+            
+            // 4. Reset UI State
             logCountDisp.innerText = "Data Points Captured: 0";
             exportBtn.style.display = 'none';
+            stopBtn.style.display = 'none';
             startBtn.innerText = "START RECORDING";
+            startBtn.style.display = 'inline-block';
+            
+            isRecording = false;
         }
     };
 </script>
