@@ -3,35 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3-Axis Vibration Analyzer</title>
+    <title>3-Axis Vibration Analyzer v2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; background: #1a1a1a; color: white; padding: 15px; }
-        .card { background: #2d2d2d; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; }
-        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-        button { padding: 12px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+        .card { background: #2d2d2d; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; border: 1px solid #444; }
+        .controls { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+        button { padding: 12px 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; min-width: 100px; }
         #startBtn { background: #2ecc71; color: white; }
+        #stopBtn { background: #f39c12; color: white; display: none; }
         #resetBtn { background: #e74c3c; color: white; }
         .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; text-align: center; }
-        .label { font-size: 0.8rem; color: #aaa; }
-        .value { font-size: 1.2rem; font-family: monospace; }
+        .label { font-size: 0.75rem; color: #aaa; text-transform: uppercase; }
+        .value { font-size: 1.1rem; font-family: monospace; padding-top: 5px; }
         canvas { background: #000; border-radius: 8px; }
+        .status-tag { font-size: 0.7rem; color: #2ecc71; margin-bottom: 10px; display: block; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Vibration Analysis (X, Y, Z)</h2>
+    <span id="status" class="status-tag">READY TO SYNC</span>
+    <h2>Vibration Analysis</h2>
     
     <div class="controls">
-        <button id="startBtn">START SENSORS</button>
-        <button id="resetBtn">RESTART / CLEAR</button>
+        <button id="startBtn">START</button>
+        <button id="stopBtn">STOP</button>
+        <button id="resetBtn">RESTART</button>
     </div>
 
     <div class="stats">
-        <div><div class="label">X-Axis</div><div id="valX" class="value" style="color:#ff6384">0.00</div></div>
-        <div><div class="label">Y-Axis</div><div id="valY" class="value" style="color:#4bc0c0">0.00</div></div>
-        <div><div class="label">Z-Axis</div><div id="valZ" class="value" style="color:#36a2eb">0.00</div></div>
+        <div><div class="label">X (Lat)</div><div id="valX" class="value" style="color:#ff6384">0.00</div></div>
+        <div><div class="label">Y (Long)</div><div id="valY" class="value" style="color:#4bc0c0">0.00</div></div>
+        <div><div class="label">Z (Vert)</div><div id="valZ" class="value" style="color:#36a2eb">0.00</div></div>
     </div>
 
     <canvas id="vibrationChart"></canvas>
@@ -39,12 +43,14 @@
 
 <script>
     const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const resetBtn = document.getElementById('resetBtn');
+    const statusText = document.getElementById('status');
     const ctx = document.getElementById('vibrationChart').getContext('2d');
     
     let chart;
-    const historyLimit = 50; 
-    let labels = Array(historyLimit).fill('');
+    let isPaused = false;
+    const historyLimit = 60; // Approx 1 second of data at 60Hz
     let dataX = Array(historyLimit).fill(0);
     let dataY = Array(historyLimit).fill(0);
     let dataZ = Array(historyLimit).fill(0);
@@ -52,7 +58,7 @@
     chart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
+            labels: Array(historyLimit).fill(''),
             datasets: [
                 { label: 'X', data: dataX, borderColor: '#ff6384', borderWidth: 2, pointRadius: 0, fill: false },
                 { label: 'Y', data: dataY, borderColor: '#4bc0c0', borderWidth: 2, pointRadius: 0, fill: false },
@@ -63,42 +69,39 @@
             responsive: true,
             animation: false,
             scales: {
-                y: { beginAtZero: true, grid: { color: '#444' } },
+                y: { min: -10, max: 10, grid: { color: '#333' }, ticks: { color: '#888' } },
                 x: { display: false }
             },
-            plugins: { legend: { labels: { color: 'white' } } }
+            plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } }
         }
     });
 
     startBtn.onclick = async () => {
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             const permission = await DeviceMotionEvent.requestPermission();
-            if (permission === 'granted') initAnalysis();
+            if (permission === 'granted') initSensor();
         } else {
-            initAnalysis();
+            initSensor();
         }
-        startBtn.disabled = true;
-        startBtn.style.opacity = '0.5';
     };
 
-    resetBtn.onclick = () => {
-        dataX.fill(0);
-        dataY.fill(0);
-        dataZ.fill(0);
-        chart.update();
-    };
-
-    function initAnalysis() {
+    function initSensor() {
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        statusText.innerText = "LIVE STREAMING";
+        
         window.addEventListener('devicemotion', (event) => {
-            const acc = event.acceleration; 
-            if (!acc.x) return;
+            if (isPaused) return; // Exit if paused
 
-            // Update Numeric Values
+            const acc = event.acceleration; 
+            if (!acc || acc.x === null) return;
+
+            // Update UI Numbers
             document.getElementById('valX').innerText = acc.x.toFixed(2);
             document.getElementById('valY').innerText = acc.y.toFixed(2);
             document.getElementById('valZ').innerText = acc.z.toFixed(2);
 
-            // Update Chart Data
+            // Update Data Arrays
             dataX.push(acc.x); dataX.shift();
             dataY.push(acc.y); dataY.shift();
             dataZ.push(acc.z); dataZ.shift();
@@ -106,6 +109,22 @@
             chart.update();
         });
     }
+
+    stopBtn.onclick = () => {
+        isPaused = !isPaused;
+        stopBtn.innerText = isPaused ? "RESUME" : "STOP";
+        stopBtn.style.background = isPaused ? "#2ecc71" : "#f39c12";
+        statusText.innerText = isPaused ? "PAUSED (FREEZE FRAME)" : "LIVE STREAMING";
+        statusText.style.color = isPaused ? "#f39c12" : "#2ecc71";
+    };
+
+    resetBtn.onclick = () => {
+        dataX.fill(0);
+        dataY.fill(0);
+        dataZ.fill(0);
+        chart.update();
+        if (isPaused) stopBtn.click(); // Auto-resume on reset
+    };
 </script>
 </body>
 </html>
