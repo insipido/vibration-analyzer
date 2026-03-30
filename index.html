@@ -1,0 +1,36 @@
+<div style="text-align: center; background: #fff; padding: 20px; border-radius: 10px;">
+    <h3>Vibration Monitor</h3>
+    <button id="sensorBtn" style="padding: 15px; font-size: 18px; background: #007bff; color: white; border: none; border-radius: 5px;">
+        Enable Sensors
+    </button>
+    <div id="display" style="font-size: 24px; margin: 20px 0; font-weight: bold;">0.00 m/s²</div>
+</div>
+
+<script>
+const btn = document.getElementById('sensorBtn');
+const disp = document.getElementById('display');
+
+btn.onclick = function() {
+    // Request for iOS 13+
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+            .then(state => {
+                if (state === 'granted') startTracking();
+                else alert('Permission denied');
+            });
+    } else {
+        // Android or older iOS
+        startTracking();
+    }
+};
+
+function startTracking() {
+    btn.style.display = 'none';
+    window.addEventListener('devicemotion', (e) => {
+        const acc = e.acceleration;
+        if (!acc) return;
+        const total = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+        disp.innerText = total.toFixed(2) + " m/s²";
+    });
+}
+</script>
