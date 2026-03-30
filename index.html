@@ -1,36 +1,111 @@
-<div style="text-align: center; background: #fff; padding: 20px; border-radius: 10px;">
-    <h3>Vibration Monitor</h3>
-    <button id="sensorBtn" style="padding: 15px; font-size: 18px; background: #007bff; color: white; border: none; border-radius: 5px;">
-        Enable Sensors
-    </button>
-    <div id="display" style="font-size: 24px; margin: 20px 0; font-weight: bold;">0.00 m/s²</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Axis Vibration Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #1a1a1a; color: white; padding: 15px; }
+        .card { background: #2d2d2d; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; }
+        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        button { padding: 12px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+        #startBtn { background: #2ecc71; color: white; }
+        #resetBtn { background: #e74c3c; color: white; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; text-align: center; }
+        .label { font-size: 0.8rem; color: #aaa; }
+        .value { font-size: 1.2rem; font-family: monospace; }
+        canvas { background: #000; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Vibration Analysis (X, Y, Z)</h2>
+    
+    <div class="controls">
+        <button id="startBtn">START SENSORS</button>
+        <button id="resetBtn">RESTART / CLEAR</button>
+    </div>
+
+    <div class="stats">
+        <div><div class="label">X-Axis</div><div id="valX" class="value" style="color:#ff6384">0.00</div></div>
+        <div><div class="label">Y-Axis</div><div id="valY" class="value" style="color:#4bc0c0">0.00</div></div>
+        <div><div class="label">Z-Axis</div><div id="valZ" class="value" style="color:#36a2eb">0.00</div></div>
+    </div>
+
+    <canvas id="vibrationChart"></canvas>
 </div>
 
 <script>
-const btn = document.getElementById('sensorBtn');
-const disp = document.getElementById('display');
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const ctx = document.getElementById('vibrationChart').getContext('2d');
+    
+    let chart;
+    const historyLimit = 50; 
+    let labels = Array(historyLimit).fill('');
+    let dataX = Array(historyLimit).fill(0);
+    let dataY = Array(historyLimit).fill(0);
+    let dataZ = Array(historyLimit).fill(0);
 
-btn.onclick = function() {
-    // Request for iOS 13+
-    if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission()
-            .then(state => {
-                if (state === 'granted') startTracking();
-                else alert('Permission denied');
-            });
-    } else {
-        // Android or older iOS
-        startTracking();
-    }
-};
-
-function startTracking() {
-    btn.style.display = 'none';
-    window.addEventListener('devicemotion', (e) => {
-        const acc = e.acceleration;
-        if (!acc) return;
-        const total = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-        disp.innerText = total.toFixed(2) + " m/s²";
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'X', data: dataX, borderColor: '#ff6384', borderWidth: 2, pointRadius: 0, fill: false },
+                { label: 'Y', data: dataY, borderColor: '#4bc0c0', borderWidth: 2, pointRadius: 0, fill: false },
+                { label: 'Z', data: dataZ, borderColor: '#36a2eb', borderWidth: 2, pointRadius: 0, fill: false }
+            ]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#444' } },
+                x: { display: false }
+            },
+            plugins: { legend: { labels: { color: 'white' } } }
+        }
     });
-}
+
+    startBtn.onclick = async () => {
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            const permission = await DeviceMotionEvent.requestPermission();
+            if (permission === 'granted') initAnalysis();
+        } else {
+            initAnalysis();
+        }
+        startBtn.disabled = true;
+        startBtn.style.opacity = '0.5';
+    };
+
+    resetBtn.onclick = () => {
+        dataX.fill(0);
+        dataY.fill(0);
+        dataZ.fill(0);
+        chart.update();
+    };
+
+    function initAnalysis() {
+        window.addEventListener('devicemotion', (event) => {
+            const acc = event.acceleration; 
+            if (!acc.x) return;
+
+            // Update Numeric Values
+            document.getElementById('valX').innerText = acc.x.toFixed(2);
+            document.getElementById('valY').innerText = acc.y.toFixed(2);
+            document.getElementById('valZ').innerText = acc.z.toFixed(2);
+
+            // Update Chart Data
+            dataX.push(acc.x); dataX.shift();
+            dataY.push(acc.y); dataY.shift();
+            dataZ.push(acc.z); dataZ.shift();
+            
+            chart.update();
+        });
+    }
 </script>
+</body>
+</html>
